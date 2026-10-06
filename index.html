@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shift Scheduler</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+  :root {
+    --bg: #f4f6f9; --panel: #ffffff; --text: #1a1f29; --muted: #6b7280;
+    --border: #e2e5ea; --header-dark: #1c2230; --header-dark-text: #ffffff;
+    --accent: #2f5fb3; --accent-text: #ffffff;
+    --shift-off: #2b2b2b; --shift-vacation: #c00000; --shift-comp: #ed7d31;
+    --offday-hint: #fdeeee;
+    --radius: 10px; box-sizing: border-box;
+  }
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --bg: #11151c; --panel: #171c26; --text: #e8ebf1; --muted: #9aa3b2;
+      --border: #2a313f; --header-dark: #0c0f16; --offday-hint: #3a2222;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #11151c; --panel: #171c26; --text: #e8ebf1; --muted: #9aa3b2;
+    --border: #2a313f; --header-dark: #0c0f16; --offday-hint: #3a2222;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif, Arial;
+    padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  html[dir="rtl"] body { font-family: "Tajawal", "Segoe UI", system-ui, sans-serif; }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  .force-ltr { direction: ltr; unicode-bidi: isolate; }
+  .wrap { max-width: 1440px; margin: 0 auto; padding: 20px 16px 60px; }
+
+  header.top {
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+    background: var(--header-dark); color: var(--header-dark-text);
+    padding: 14px 20px; border-radius: 0 0 var(--radius) var(--radius);
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+  header.top h1 { font-size: 18px; margin: 0; font-weight: 700; letter-spacing: 0.3px; }
+  header.top .sub { font-size: 12px; opacity: 0.7; }
+
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-top: 18px; }
+  .panel h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin: 0 0 14px 0; }
+  html[dir="rtl"] .panel h2 { text-transform: none; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 4px; min-width: 120px; }
+  .field label { font-size: 11px; color: var(--muted); font-weight: 600; }
+  .field input[type="text"], .field input[type="date"], .field select {
+    padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 13px; min-width: 0;
+  }
+  .field.grow { flex: 1; }
+
+  button {
+    cursor: pointer; border: none; border-radius: 7px; padding: 9px 16px;
+    font-size: 13px; font-weight: 600; transition: filter 0.15s ease; font-family: inherit;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:active { filter: brightness(0.95); }
+  button.primary { background: var(--accent); color: var(--accent-text); }
+  button.secondary { background: var(--border); color: var(--text); }
+  button.danger { background: var(--shift-vacation); color: #fff; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.lang-toggle { background: rgba(255,255,255,0.12); color: #fff; }
+  button.chip-add { padding: 6px 12px; font-size: 12px; }
+
+  table.emptable { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+  table.emptable th, table.emptable td { border: 1px solid var(--border); padding: 6px 8px; text-align: start; }
+  table.emptable th { background: var(--bg); font-size: 11px; text-transform: uppercase; color: var(--muted); }
+  html[dir="rtl"] table.emptable th { text-transform: none; }
+
+  .scroll-x { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); margin-top: 14px; }
+
+  table.grid { border-collapse: collapse; font-size: 12px; white-space: nowrap; min-width: 100%; }
+  table.grid th, table.grid td { border: 1px solid var(--border); padding: 4px 6px; text-align: center; }
+  table.grid thead th { background: var(--header-dark); color: var(--header-dark-text); position: sticky; top: 0; z-index: 5; font-weight: 600; }
+  table.grid td.name-cell, table.grid th.name-col {
+    position: sticky; inset-inline-start: 0; background: var(--panel); z-index: 4; text-align: start; font-weight: 600;
+  }
+  table.grid thead th.name-col { z-index: 6; background: var(--header-dark); }
+  table.grid td.sep-col { background: var(--border); font-weight: 700; }
+  table.grid td.offday-hint { background: var(--offday-hint); }
+  table.grid select.shift-select {
+    width: 64px; border: none; text-align: center; font-size: 12px; font-weight: 700;
+    border-radius: 4px; padding: 3px 2px; appearance: none; -webkit-appearance: none;
+  }
+  table.grid td.days-off { font-weight: 700; background: var(--bg); }
+
+  table.summary { border-collapse: collapse; font-size: 12px; width: 100%; }
+  table.summary th, table.summary td { border: 1px solid var(--border); padding: 5px 6px; text-align: center; }
+  table.summary thead th { background: var(--header-dark); color: var(--header-dark-text); }
+  table.summary td.label-col, table.summary th.label-col { text-align: start; font-weight: 700; background: var(--bg); }
+  table.summary tr.row-off td { background: var(--shift-off); color: #fff; }
+  table.summary tr.row-vacation td { background: var(--shift-vacation); color: #fff; }
+  table.summary tr.row-comp td { background: var(--shift-comp); color: #fff; }
+  table.summary tr.row-total td { background: var(--accent); color: #fff; font-weight: 700; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; font-size: 12px; }
+  .legend span.swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-inline-end: 5px; vertical-align: -1px; }
+  .legend .item { display: flex; align-items: center; color: var(--muted); }
+
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  .chip-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; align-items: center; }
+  .chip-picker label {
+    display: flex; align-items: center; gap: 5px; border: 1px solid var(--border);
+    padding: 6px 10px; border-radius: 20px; font-size: 12px; cursor: pointer; background: var(--bg);
+  }
+  .chip-picker label.is-on { border-color: var(--accent); color: var(--accent); font-weight: 700; background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
+  .chip-picker.small label { padding: 4px 8px; font-size: 11px; }
+
+  .empty-state { padding: 30px; text-align: center; color: var(--muted); font-size: 13px; }
+
+  .toast {
+    position: fixed; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); left: 50%;
+    transform: translateX(-50%); background: var(--header-dark); color: #fff;
+    padding: 10px 18px; border-radius: 8px; font-size: 13px; opacity: 0;
+    pointer-events: none; transition: opacity 0.25s ease; z-index: 50; max-width: 90vw; text-align: center;
+  }
+  .toast.show { opacity: 1; }
+
+  small.hint { color: var(--muted); font-size: 11px; display: block; margin-top: 2px; }
+  .edit-banner {
+    display: none; background: color-mix(in srgb, var(--accent) 15%, transparent); border: 1px dashed var(--accent);
+    padding: 8px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 10px; align-items: center; justify-content: space-between;
+  }
+  .edit-banner.show { display: flex; }
+  .subpanel { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 14px; background: var(--bg); }
+  .subpanel .label { font-size: 11px; color: var(--muted); font-weight: 700; margin-bottom: 4px; display: block; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1 data-i18n="appTitle">🗓️ Shift Scheduler</h1>
+      <div class="sub" data-i18n="appSub">Two-week rota builder · per-employee days off</div>
+    </div>
+    <div class="toolbar" style="margin-top:0;">
+      <button class="lang-toggle" id="btnLang">العربية</button>
+      <button class="secondary" id="btnAutoFill" data-i18n="btnAutoFill">Auto-fill shifts</button>
+      <button class="primary" id="btnExport" data-i18n="btnExport">⬇ Export to Excel</button>
+    </div>
+  </header>
+
+  <section class="panel">
+    <h2 data-i18n="sec1Title">1. Pick the period</h2>
+    <div class="row">
+      <div class="field">
+        <label data-i18n="startDateLabel" for="startDate">Start date (any day)</label>
+        <input type="date" id="startDate" class="force-ltr">
+      </div>
+      <button class="primary" id="btnGenerate" data-i18n="btnGenerate">Generate 2-week period</button>
+      <div class="field">
+        <small class="hint force-ltr" id="periodLabel">—</small>
+      </div>
+    </div>
+
+    <div class="subpanel">
+      <span class="label" data-i18n="shiftTimesTitle">Available shift times</span>
+      <small class="hint" data-i18n="shiftTimesHint">Enable only the start times your team actually uses — only enabled times appear in the schedule and summary below.</small>
+      <div class="chip-picker" id="timePicker"></div>
+      <div class="row" style="margin-top:10px;">
+        <div class="field">
+          <label data-i18n="customTimeLabel">Add a custom time</label>
+          <input type="text" id="customTimeInput" class="force-ltr" placeholder="e.g. 12:00">
+        </div>
+        <button class="secondary chip-add" id="btnAddTime" data-i18n="btnAddTime">Add</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 data-i18n="sec2Title">2. Employees</h2>
+
+    <div class="edit-banner" id="editBanner">
+      <span id="editBannerText"></span>
+      <button class="ghost" id="btnCancelEdit" data-i18n="btnCancelEdit" style="padding:4px 10px;font-size:11px;">Cancel</button>
+    </div>
+
+    <div class="row">
+      <div class="field grow">
+        <label data-i18n="fldName">Agent name</label>
+        <input type="text" id="empName">
+      </div>
+      <div class="field">
+        <label data-i18n="fldUsername">Username</label>
+        <input type="text" id="empUsername" class="force-ltr">
+      </div>
+      <div class="field">
+        <label data-i18n="fldGender">Gender</label>
+        <select id="empGender">
+          <option value="M" data-i18n="genderM">M</option>
+          <option value="F" data-i18n="genderF">F</option>
+        </select>
+      </div>
+      <div class="field">
+        <label data-i18n="fldLob">LOB</label>
+        <input type="text" id="empLob">
+      </div>
+      <div class="field">
+        <label data-i18n="fldHrId">HR ID</label>
+        <input type="text" id="empHrId" class="force-ltr">
+      </div>
+      <div class="field">
+        <label data-i18n="fldPreferred">Preferred shift</label>
+        <select id="empPreferred" class="force-ltr"></select>
+      </div>
+      <button class="primary" id="btnAddEmployee" data-i18n="btnAdd">+ Add</button>
+    </div>
+
+    <div class="subpanel">
+      <span class="label" data-i18n="fldOffDays">Days off for this employee</span>
+      <small class="hint" data-i18n="offDaysHint">Pick this employee's own weekly days off — e.g. Sunday &amp; Monday for one person, Friday &amp; Saturday for another.</small>
+      <div class="chip-picker small" id="empOffDaysPicker"></div>
+    </div>
+
+    <div id="empTableWrap"></div>
+  </section>
+
+  <section class="panel">
+    <h2><span data-i18n="sec3Title">3. Schedule grid</span> <small class="hint" style="display:inline;" data-i18n="sec3Hint">(click a cell to change that day's shift)</small></h2>
+    <div class="legend" id="legend"></div>
+    <div id="scheduleWrap"></div>
+  </section>
+
+  <section class="panel">
+    <h2 data-i18n="sec4Title">4. Headcount summary</h2>
+    <div class="two-col" id="summaryWrap"></div>
+  </section>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Translations ----------
+  const T = {
+    en: {
+      appTitle: "🗓️ Shift Scheduler",
+      appSub: "Two-week rota builder · per-employee days off",
+      btnAutoFill: "Auto-fill shifts",
+      btnExport: "⬇ Export to Excel",
+      sec1Title: "1. Pick the period",
+      startDateLabel: "Start date (any day)",
+      btnGenerate: "Generate 2-week period",
+      shiftTimesTitle: "Available shift times",
+      shiftTimesHint: "Enable only the start times your team actually uses — only enabled times appear in the schedule and summary below.",
+      customTimeLabel: "Add a custom time",
+      btnAddTime: "Add",
+      sec2Title: "2. Employees",
+      fldName: "Agent name", fldUsername: "Username", fldGender: "Gender",
+      fldLob: "LOB", fldHrId: "HR ID", fldPreferred: "Preferred shift",
+      fldOffDays: "Days off for this employee",
+      offDaysHint: "Pick this employee's own weekly days off — e.g. Sunday & Monday for one person, Friday & Saturday for another.",
+      btnAdd: "+ Add", btnUpdate: "Update", btnCancelEdit: "Cancel",
+      genderM: "M", genderF: "F",
+      sec3Title: "3. Schedule grid", sec3Hint: "(click a cell to change that day's shift)",
+      sec4Title: "4. Headcount summary",
+      thName: "Agent", thUsername: "Username", thGender: "Gender", thLob: "LOB",
+      thHrId: "HR ID", thPreferred: "Preferred", thOffDays: "Days off",
+      btnEdit: "Edit", btnRemove: "Remove",
+      thDaysOff: "Days Off", thShift: "Shift",
+      week1: "WEEK 1", week2: "WEEK 2",
+      rowV: "V", rowOff: "off", rowComp: "Comp", rowTotal: "Total Login",
+      emptyEmp: "No employees yet — add your first one above.",
+      emptyGridPeriod: "Generate a period above to build the grid.",
+      emptyGridEmp: "Add employees to see the schedule grid.",
+      emptySummary: "Nothing to summarize yet.",
+      toastNeedName: "Enter an employee name first.",
+      toastDup: "An employee with that name already exists.",
+      toastAdded: (n) => `${n} added.`,
+      toastUpdated: (n) => `${n} updated.`,
+      toastNeedPeriodFill: "Generate the period first.",
+      toastNeedEmpFill: "Add employees first.",
+      toastAutoFilled: "Shifts auto-filled from each employee's preferred time and days off. You can still override any cell.",
+      toastNeedExport: "Generate a period and add employees first.",
+      toastSaved: "Excel file saved.",
+      toastDelivered: "File sent.",
+      toastCancelled: "Download cancelled.",
+      toastSaveError: (m) => "Couldn't save the file: " + m,
+      toastUnavailable: "File downloads aren't available in this view.",
+      toastBuildError: "Something went wrong building the file.",
+      toastKeepOneTime: "Keep at least one shift time enabled.",
+      toastTimeExists: "That time already exists.",
+      toastTimeInvalid: "Enter a time like 12:00.",
+      building: "Building file…",
+      periodLabel: (a,b,c,d,e,f) => `Period: ${a} → ${b} (Week 1: ${c}–${d}, Week 2: ${e}–${f})`,
+      editBanner: (n) => `Editing ${n}`,
+      dayShort: ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"],
+      legend: {
+        morning: "Morning (7–11)", evening: "Evening (14–15)", night: "Night (23:00)",
+        off: "Day off", h: "Holiday", v: "Vacation", comp: "Comp off"
+      }
+    },
+    ar: {
+      appTitle: "🗓️ جدول المناوبات",
+      appSub: "منشئ جدول مناوبات لأسبوعين · أيام إجازة خاصة بكل موظف",
+      btnAutoFill: "تعبئة تلقائية للمناوبات",
+      btnExport: "⬇ تصدير إلى إكسل",
+      sec1Title: "١. اختر الفترة",
+      startDateLabel: "تاريخ البداية (أي يوم)",
+      btnGenerate: "إنشاء فترة الأسبوعين",
+      shiftTimesTitle: "أوقات المناوبات المتاحة",
+      shiftTimesHint: "فعّل فقط الأوقات التي يستخدمها فريقك فعلياً — تظهر الأوقات المفعّلة فقط في الجدول والملخص أدناه.",
+      customTimeLabel: "أضف وقتاً مخصصاً",
+      btnAddTime: "إضافة",
+      sec2Title: "٢. الموظفون",
+      fldName: "اسم الموظف", fldUsername: "اسم المستخدم", fldGender: "الجنس",
+      fldLob: "القسم (LOB)", fldHrId: "الرقم الوظيفي", fldPreferred: "المناوبة المفضلة",
+      fldOffDays: "أيام إجازة هذا الموظف",
+      offDaysHint: "اختر أيام الإجازة الأسبوعية الخاصة بهذا الموظف — مثلاً الأحد والاثنين لموظف، والجمعة والسبت لموظف آخر.",
+      btnAdd: "+ إضافة", btnUpdate: "تحديث", btnCancelEdit: "إلغاء",
+      genderM: "ذكر", genderF: "أنثى",
+      sec3Title: "٣. جدول المناوبات", sec3Hint: "(اضغط على الخلية لتغيير مناوبة ذلك اليوم)",
+      sec4Title: "٤. ملخص عدد الموظفين",
+      thName: "الموظف", thUsername: "اسم المستخدم", thGender: "الجنس", thLob: "القسم",
+      thHrId: "الرقم الوظيفي", thPreferred: "المفضلة", thOffDays: "أيام الإجازة",
+      btnEdit: "تعديل", btnRemove: "حذف",
+      thDaysOff: "أيام الإجازة", thShift: "المناوبة",
+      week1: "الأسبوع ١", week2: "الأسبوع ٢",
+      rowV: "إجازة", rowOff: "عطلة", rowComp: "تعويض", rowTotal: "إجمالي الحضور",
+      emptyEmp: "لا يوجد موظفون بعد — أضف أول موظف أعلاه.",
+      emptyGridPeriod: "أنشئ فترة أعلاه لبناء الجدول.",
+      emptyGridEmp: "أضف موظفين لعرض جدول المناوبات.",
+      emptySummary: "لا يوجد شيء لتلخيصه بعد.",
+      toastNeedName: "أدخل اسم الموظف أولاً.",
+      toastDup: "يوجد موظف بهذا الاسم مسبقاً.",
+      toastAdded: (n) => `تمت إضافة ${n}.`,
+      toastUpdated: (n) => `تم تحديث ${n}.`,
+      toastNeedPeriodFill: "أنشئ الفترة أولاً.",
+      toastNeedEmpFill: "أضف موظفين أولاً.",
+      toastAutoFilled: "تمت تعبئة المناوبات تلقائياً حسب الوقت المفضل وأيام الإجازة لكل موظف. يمكنك تعديل أي خلية يدوياً.",
+      toastNeedExport: "أنشئ الفترة وأضف الموظفين أولاً.",
+      toastSaved: "تم حفظ ملف إكسل.",
+      toastDelivered: "تم إرسال الملف.",
+      toastCancelled: "تم إلغاء التنزيل.",
+      toastSaveError: (m) => "تعذر حفظ الملف: " + m,
+      toastUnavailable: "تنزيل الملفات غير متاح في هذه الواجهة.",
+      toastBuildError: "حدث خطأ أثناء إنشاء الملف.",
+      toastKeepOneTime: "أبقِ وقتاً واحداً على الأقل مفعّلاً.",
+      toastTimeExists: "هذا الوقت موجود مسبقاً.",
+      toastTimeInvalid: "أدخل وقتاً مثل 12:00.",
+      building: "جارٍ إنشاء الملف…",
+      periodLabel: (a,b,c,d,e,f) => `الفترة: ${a} ← ${b} (الأسبوع ١: ${c}–${d}، الأسبوع ٢: ${e}–${f})`,
+      editBanner: (n) => `تعديل بيانات ${n}`,
+      dayShort: ["أحد","إثنين","ثلاثاء","أربعاء","خميس","جمعة","سبت"],
+      legend: {
+        morning: "صباحية (7–11)", evening: "مسائية (14–15)", night: "ليلية (23:00)",
+        off: "إجازة", h: "عطلة رسمية", v: "إجازة سنوية", comp: "تعويض"
+      }
+    }
+  };
+
+  let lang = "en";
+  function t(key) { return T[lang][key]; }
+
+  // ---------- Constants ----------
+  const STATUS_VALUES = ["OFF", "H", "V", "Comp"];
+  const DEFAULT_TIMES = ["7:00","8:00","9:00","10:00","11:00","14:00","15:00","23:00"];
+
+  const BASE_SHIFT_STYLE = {
+    "OFF":   { bg: "#2b2b2b", fg: "#ffffff" },
+    "H":     { bg: "#7030a0", fg: "#ffffff" },
+    "V":     { bg: "#c00000", fg: "#ffffff" },
+    "Comp":  { bg: "#ed7d31", fg: "#ffffff" },
+    "":      { bg: "transparent", fg: "inherit" }
+  };
+  const TIME_PALETTE = ["#a9d18e","#b7dfae","#9dc3e6","#7fb0de","#f4b183","#ffd966","#1f3864","#4472c4","#6aa84f","#e06666"];
+  function styleFor(value) {
+    if (BASE_SHIFT_STYLE[value]) return BASE_SHIFT_STYLE[value];
+    const idx = allTimes.indexOf(value);
+    if (idx === -1) return { bg: "#cccccc", fg: "#1a1a1a" };
+    const color = TIME_PALETTE[idx % TIME_PALETTE.length];
+    const dark = ["#1f3864","#4472c4"].includes(color);
+    return { bg: color, fg: dark ? "#ffffff" : "#15311a" };
+  }
+
+  // ---------- State ----------
+  let employees = [];
+  let periodStart = null;
+  let dates = [];
+  let editingId = null;
+  let allTimes = [...DEFAULT_TIMES];       // master catalog, in display order
+  let enabledTimes = new Set(DEFAULT_TIMES); // which of allTimes are currently active
+
+  const STORAGE_KEY = "shiftScheduler.state.v3";
+
+  // ---------- Helpers ----------
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function toISO(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+  function fromISO(s) { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); }
+  function fmtShort(d) { return `${pad(d.getDate())}-${d.toLocaleString("en-US",{month:"short"})}`; }
+  function nextSundayOnOrBefore(d) {
+    const copy = new Date(d);
+    copy.setDate(copy.getDate() - copy.getDay());
+    copy.setHours(0,0,0,0);
+    return copy;
+  }
+  function uid() { return "e" + Math.random().toString(36).slice(2, 9); }
+  function escapeHtml(s) {
+    return String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
+  }
+  function showToast(msg) {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(showToast._timer);
+    showToast._timer = setTimeout(() => el.classList.remove("show"), 2800);
+  }
+  function enabledTimesOrdered() { return allTimes.filter(tm => enabledTimes.has(tm)); }
+  function selectableValues(extraValue) {
+    const times = enabledTimesOrdered();
+    if (extraValue && !times.includes(extraValue) && !STATUS_VALUES.includes(extraValue) && extraValue !== "") {
+      times.push(extraValue); // keep a previously-chosen-but-now-disabled time visible
+    }
+    return [...times, ...STATUS_VALUES];
+  }
+
+  // ---------- Persistence ----------
+  function saveState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        employees,
+        periodStart: periodStart ? toISO(periodStart) : null,
+        allTimes, enabledTimes: Array.from(enabledTimes),
+        lang
+      }));
+    } catch (e) {}
+  }
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      employees = Array.isArray(data.employees) ? data.employees.map(e => ({ offDays: [], ...e })) : [];
+      periodStart = data.periodStart ? fromISO(data.periodStart) : null;
+      if (Array.isArray(data.allTimes) && data.allTimes.length) allTimes = data.allTimes;
+      if (Array.isArray(data.enabledTimes)) enabledTimes = new Set(data.enabledTimes);
+      if (data.lang === "ar" || data.lang === "en") lang = data.lang;
+      return true;
+    } catch (e) { return false; }
+  }
+
+  // ---------- Language ----------
+  function applyStaticTranslations() {
+    document.documentElement.setAttribute("lang", lang);
+    document.documentElement.setAttribute("dir", lang === "ar" ? "rtl" : "ltr");
+    document.getElementById("btnLang").textContent = lang === "ar" ? "English" : "العربية";
+    document.querySelectorAll("[data-i18n]").forEach(el => {
+      const key = el.getAttribute("data-i18n");
+      if (typeof T[lang][key] === "string") el.textContent = T[lang][key];
+    });
+  }
+  function switchLang(newLang) {
+    lang = newLang;
+    applyStaticTranslations();
+    renderTimePicker();
+    renderPreferredOptions();
+    renderEmpOffDaysPicker();
+    renderAll();
+    updatePeriodLabel();
+    saveState();
+  }
+
+  // ---------- Period ----------
+  function generatePeriod(fromDate) {
+    periodStart = nextSundayOnOrBefore(fromDate);
+    dates = [];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(periodStart);
+      d.setDate(d.getDate() + i);
+      dates.push(d);
+    }
+    employees.forEach(fillEmployeeShifts); // keep the grid filled when the period changes
+    updatePeriodLabel();
+    saveState();
+    renderAll();
+  }
+  function updatePeriodLabel() {
+    if (!dates.length) return;
+    document.getElementById("periodLabel").textContent =
+      t("periodLabel")(fmtShort(dates[0]), fmtShort(dates[13]), fmtShort(dates[0]), fmtShort(dates[6]), fmtShort(dates[7]), fmtShort(dates[13]));
+  }
+
+  // ---------- Shift-time catalog ----------
+  function renderTimePicker() {
+    const el = document.getElementById("timePicker");
+    el.innerHTML = allTimes.map(tm => `
+      <label class="${enabledTimes.has(tm) ? "is-on" : ""}" data-time="${tm}">
+        <input type="checkbox" data-time-checkbox="${tm}" ${enabledTimes.has(tm) ? "checked" : ""}>
+        <span class="force-ltr">${tm}</span>
+      </label>
+    `).join("");
+    el.querySelectorAll("[data-time-checkbox]").forEach(cb => {
+      cb.addEventListener("change", () => {
+        const tm = cb.getAttribute("data-time-checkbox");
+        if (cb.checked) enabledTimes.add(tm);
+        else {
+          if (enabledTimes.size === 1) { cb.checked = true; showToast(t("toastKeepOneTime")); return; }
+          enabledTimes.delete(tm);
+        }
+        saveState();
+        renderTimePicker();
+        renderPreferredOptions();
+        renderAll();
+      });
+    });
+  }
+
+  function addCustomTime() {
+    const input = document.getElementById("customTimeInput");
+    const val = input.value.trim();
+    if (!/^\d{1,2}:\d{2}$/.test(val)) { showToast(t("toastTimeInvalid")); return; }
+    if (allTimes.includes(val)) { showToast(t("toastTimeExists")); return; }
+    allTimes.push(val);
+    enabledTimes.add(val);
+    input.value = "";
+    saveState();
+    renderTimePicker();
+    renderPreferredOptions();
+    renderAll();
+  }
+
+  function renderPreferredOptions() {
+    const sel = document.getElementById("empPreferred");
+    const current = sel.value;
+    const options = enabledTimesOrdered();
+    sel.innerHTML = options.map(tm => `<option value="${tm}">${tm}</option>`).join("");
+    if (options.includes(current)) sel.value = current;
+  }
+
+  // ---------- Per-employee days-off picker (used in the add/edit form) ----------
+  let formOffDays = new Set();
+  function renderEmpOffDaysPicker() {
+    const el = document.getElementById("empOffDaysPicker");
+    const dayShort = t("dayShort");
+    el.innerHTML = dayShort.map((label, idx) => `
+      <label class="${formOffDays.has(idx) ? "is-on" : ""}" data-day="${idx}">
+        <input type="checkbox" data-offday-checkbox="${idx}" ${formOffDays.has(idx) ? "checked" : ""}>
+        ${label}
+      </label>
+    `).join("");
+    el.querySelectorAll("[data-offday-checkbox]").forEach(cb => {
+      cb.addEventListener("change", () => {
+        const day = Number(cb.getAttribute("data-offday-checkbox"));
+        if (cb.checked) formOffDays.add(day); else formOffDays.delete(day);
+        renderEmpOffDaysPicker();
+      });
+    });
+  }
+
+  // ---------- Employee management ----------
+  function startEdit(id) {
+    const emp = employees.find(e => e.id === id);
+    if (!emp) return;
+    editingId = id;
+    document.getElementById("empName").value = emp.name;
+    document.getElementById("empUsername").value = emp.username;
+    document.getElementById("empGender").value = emp.gender;
+    document.getElementById("empLob").value = emp.lob;
+    document.getElementById("empHrId").value = emp.hrId;
+    renderPreferredOptions();
+    document.getElementById("empPreferred").value = emp.preferredShift;
+    formOffDays = new Set(emp.offDays || []);
+    renderEmpOffDaysPicker();
+
+    const banner = document.getElementById("editBanner");
+    banner.classList.add("show");
+    document.getElementById("editBannerText").textContent = t("editBanner")(emp.name);
+    document.getElementById("btnAddEmployee").textContent = t("btnUpdate");
+    document.getElementById("empName").focus();
+  }
+
+  function cancelEdit() {
+    editingId = null;
+    document.getElementById("empName").value = "";
+    document.getElementById("empUsername").value = "";
+    document.getElementById("empHrId").value = "";
+    document.getElementById("empLob").value = "";
+    formOffDays = new Set();
+    renderEmpOffDaysPicker();
+    document.getElementById("editBanner").classList.remove("show");
+    document.getElementById("btnAddEmployee").textContent = t("btnAdd");
+  }
+
+  function addOrUpdateEmployee() {
+    const name = document.getElementById("empName").value.trim();
+    if (!name) { showToast(t("toastNeedName")); return; }
+
+    const dup = employees.some(e => e.name.toLowerCase() === name.toLowerCase() && e.id !== editingId);
+    if (dup) { showToast(t("toastDup")); return; }
+
+    const fields = {
+      name,
+      username: document.getElementById("empUsername").value.trim(),
+      gender: document.getElementById("empGender").value,
+      lob: document.getElementById("empLob").value.trim(),
+      hrId: document.getElementById("empHrId").value.trim(),
+      preferredShift: document.getElementById("empPreferred").value,
+      offDays: Array.from(formOffDays).sort()
+    };
+
+    if (editingId) {
+      const emp = employees.find(e => e.id === editingId);
+      Object.assign(emp, fields);
+      showToast(t("toastUpdated")(name));
+    } else {
+      const emp = { id: uid(), ...fields, shifts: {} };
+      employees.push(emp);
+      fillEmployeeShifts(emp); // auto-fill this employee's two weeks immediately
+      showToast(t("toastAdded")(name));
+    }
+
+    cancelEdit();
+    saveState();
+    renderAll();
+  }
+
+  function removeEmployee(id) {
+    employees = employees.filter(e => e.id !== id);
+    if (editingId === id) cancelEdit();
+    saveState();
+    renderAll();
+  }
+
+  // ---------- Auto-fill: each employee gets their own off days, preferred time the rest ----------
+  function fillEmployeeShifts(emp) {
+    if (!dates.length) return;
+    dates.forEach(date => {
+      const iso = toISO(date);
+      const isOff = (emp.offDays || []).includes(date.getDay());
+      emp.shifts[iso] = isOff ? "OFF" : emp.preferredShift;
+    });
+  }
+
+  function autoFillShifts() {
+    if (!dates.length) { showToast(t("toastNeedPeriodFill")); return; }
+    if (!employees.length) { showToast(t("toastNeedEmpFill")); return; }
+
+    employees.forEach(fillEmployeeShifts);
+
+    saveState();
+    renderAll();
+    showToast(t("toastAutoFilled"));
+  }
+
+  // ---------- Rendering ----------
+  function renderLegend() {
+    const el = document.getElementById("legend");
+    const L = t("legend");
+    const timeEntries = enabledTimesOrdered().slice(0, 4).map(tm => [tm, tm]); // show a few as swatches
+    const statusEntries = [["OFF", L.off], ["H", L.h], ["V", L.v], ["Comp", L.comp]];
+    el.innerHTML = [...timeEntries, ...statusEntries].map(([key, label]) => {
+      const style = styleFor(key);
+      return `<span class="item"><span class="swatch" style="background:${style.bg}"></span><span class="force-ltr">${label}</span></span>`;
+    }).join("");
+  }
+
+  function renderEmployeeTable() {
+    const wrap = document.getElementById("empTableWrap");
+    const dayShort = t("dayShort");
+    if (!employees.length) { wrap.innerHTML = `<div class="empty-state">${t("emptyEmp")}</div>`; return; }
+    wrap.innerHTML = `
+      <table class="emptable">
+        <thead><tr>
+          <th>${t("thName")}</th><th>${t("thUsername")}</th><th>${t("thGender")}</th>
+          <th>${t("thLob")}</th><th>${t("thHrId")}</th><th>${t("thPreferred")}</th>
+          <th>${t("thOffDays")}</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${employees.map(e => `
+            <tr>
+              <td>${escapeHtml(e.name)}</td>
+              <td class="force-ltr">${escapeHtml(e.username)}</td>
+              <td>${e.gender === "F" ? t("genderF") : t("genderM")}</td>
+              <td>${escapeHtml(e.lob)}</td>
+              <td class="force-ltr">${escapeHtml(e.hrId)}</td>
+              <td class="force-ltr">${escapeHtml(e.preferredShift)}</td>
+              <td>${(e.offDays || []).map(d => dayShort[d]).join(", ") || "—"}</td>
+              <td style="white-space:nowrap;">
+                <button class="ghost" data-edit="${e.id}" style="padding:4px 10px;font-size:11px;">${t("btnEdit")}</button>
+                <button class="danger" data-remove="${e.id}" style="padding:4px 10px;font-size:11px;">${t("btnRemove")}</button>
+              </td>
+            </tr>`).join("")}
+        </tbody>
+      </table>`;
+    wrap.querySelectorAll("[data-remove]").forEach(btn => btn.addEventListener("click", () => removeEmployee(btn.getAttribute("data-remove"))));
+    wrap.querySelectorAll("[data-edit]").forEach(btn => btn.addEventListener("click", () => startEdit(btn.getAttribute("data-edit"))));
+  }
+
+  function weekDates(weekIndex) { return dates.slice(weekIndex * 7, weekIndex * 7 + 7); }
+
+  function daysOffCount(emp, weekIndex) {
+    return weekDates(weekIndex).reduce((n, d) => {
+      const v = emp.shifts[toISO(d)];
+      return n + (v === "OFF" || v === "H" || v === "V" ? 1 : 0);
+    }, 0);
+  }
+
+  function renderScheduleGrid() {
+    const wrap = document.getElementById("scheduleWrap");
+    if (!dates.length) { wrap.innerHTML = `<div class="empty-state">${t("emptyGridPeriod")}</div>`; return; }
+    if (!employees.length) { wrap.innerHTML = `<div class="empty-state">${t("emptyGridEmp")}</div>`; return; }
+
+    const dayShort = t("dayShort");
+    const headCells = (weekIdx) => weekDates(weekIdx).map(d =>
+      `<th>${dayShort[d.getDay()]}<br><span class="force-ltr" style="display:inline-block;">${fmtShort(d)}</span></th>`
+    ).join("") + `<th>${t("thDaysOff")}</th>`;
+
+    let html = `<div class="scroll-x force-ltr"><table class="grid"><thead><tr>
+      <th class="name-col">${t("thName")}</th><th>${t("thUsername")}</th><th>${t("thGender")}</th><th>${t("thLob")}</th><th>${t("thHrId")}</th>
+      ${headCells(0)}
+      <th class="sep-col">‖</th>
+      ${headCells(1)}
+    </tr></thead><tbody>`;
+
+    employees.forEach(emp => {
+      html += `<tr>
+        <td class="name-cell" style="direction:${lang === "ar" ? "rtl" : "ltr"};">${escapeHtml(emp.name)}</td>
+        <td>${escapeHtml(emp.username)}</td>
+        <td>${emp.gender === "F" ? t("genderF") : t("genderM")}</td>
+        <td>${escapeHtml(emp.lob)}</td>
+        <td>${escapeHtml(emp.hrId)}</td>`;
+
+      [0, 1].forEach(weekIdx => {
+        weekDates(weekIdx).forEach(d => {
+          const iso = toISO(d);
+          const val = emp.shifts[iso] || "";
+          const style = styleFor(val);
+          const isOffDay = (emp.offDays || []).includes(d.getDay());
+          const hint = isOffDay && !val;
+          html += `<td class="${hint ? "offday-hint" : ""}">
+            <select class="shift-select" data-emp="${emp.id}" data-date="${iso}"
+              style="background:${style.bg};color:${style.fg};">
+              <option value="">–</option>
+              ${selectableValues(val).map(v => `<option value="${v}" ${v === val ? "selected" : ""}>${v}</option>`).join("")}
+            </select>
+          </td>`;
+        });
+        html += `<td class="days-off">${daysOffCount(emp, weekIdx)}</td>`;
+        if (weekIdx === 0) html += `<td class="sep-col">‖</td>`;
+      });
+
+      html += `</tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+    wrap.innerHTML = html;
+
+    wrap.querySelectorAll("select.shift-select").forEach(sel => {
+      sel.addEventListener("change", (ev) => {
+        const empId = ev.target.getAttribute("data-emp");
+        const iso = ev.target.getAttribute("data-date");
+        const emp = employees.find(e => e.id === empId);
+        if (!emp) return;
+        if (ev.target.value) emp.shifts[iso] = ev.target.value;
+        else delete emp.shifts[iso];
+        const style = styleFor(ev.target.value);
+        ev.target.style.background = style.bg;
+        ev.target.style.color = style.fg;
+        saveState();
+        renderSummary();
+        updateDaysOffCells();
+      });
+    });
+  }
+
+  function updateDaysOffCells() {
+    const wrap = document.getElementById("scheduleWrap");
+    const rows = wrap.querySelectorAll("table.grid tbody tr");
+    rows.forEach((row, i) => {
+      const emp = employees[i];
+      if (!emp) return;
+      const doCells = row.querySelectorAll("td.days-off");
+      if (doCells[0]) doCells[0].textContent = daysOffCount(emp, 0);
+      if (doCells[1]) doCells[1].textContent = daysOffCount(emp, 1);
+    });
+  }
+
+  function computeCounts(weekIdx) {
+    const wDates = weekDates(weekIdx);
+    const times = enabledTimesOrdered();
+    const allVals = [...times, ...STATUS_VALUES];
+    const counts = {};
+    allVals.forEach(v => { counts[v] = wDates.map(() => 0); });
+    employees.forEach(emp => {
+      wDates.forEach((d, i) => {
+        const v = emp.shifts[toISO(d)];
+        if (v && counts[v]) counts[v][i]++;
+      });
+    });
+    const totalLogin = wDates.map((d, i) => times.reduce((sum, tm) => sum + counts[tm][i], 0));
+    return { counts, totalLogin, wDates, times };
+  }
+
+  function renderSummaryTableFor(weekIdx) {
+    const { counts, totalLogin, wDates, times } = computeCounts(weekIdx);
+    const dayShort = t("dayShort");
+    let html = `<table class="summary"><thead><tr><th class="label-col">${t("thShift")}</th>`;
+    wDates.forEach(d => { html += `<th>${dayShort[d.getDay()]}</th>`; });
+    html += `</tr></thead><tbody>`;
+
+    times.forEach(tm => {
+      html += `<tr><td class="label-col force-ltr" style="text-align:center;">${tm}</td>`;
+      counts[tm].forEach(v => { html += `<td>${v}</td>`; });
+      html += `</tr>`;
+    });
+
+    html += `<tr class="row-vacation"><td class="label-col">${t("rowV")}</td>${counts["V"].map(v => `<td>${v}</td>`).join("")}</tr>`;
+    html += `<tr class="row-off"><td class="label-col">${t("rowOff")}</td>${counts["OFF"].map(v => `<td>${v}</td>`).join("")}</tr>`;
+    html += `<tr class="row-comp"><td class="label-col">${t("rowComp")}</td>${counts["Comp"].map(v => `<td>${v}</td>`).join("")}</tr>`;
+    html += `<tr class="row-total"><td class="label-col">${t("rowTotal")}</td>${totalLogin.map(v => `<td>${v}</td>`).join("")}</tr>`;
+    html += `</tbody></table>`;
+    return html;
+  }
+
+  function renderSummary() {
+    const wrap = document.getElementById("summaryWrap");
+    if (!dates.length || !employees.length) { wrap.innerHTML = `<div class="empty-state">${t("emptySummary")}</div>`; return; }
+    wrap.innerHTML = `
+      <div class="force-ltr"><strong style="font-size:12px;color:var(--muted);">${t("week1")}</strong>${renderSummaryTableFor(0)}</div>
+      <div class="force-ltr"><strong style="font-size:12px;color:var(--muted);">${t("week2")}</strong>${renderSummaryTableFor(1)}</div>
+    `;
+  }
+
+  function renderAll() {
+    renderLegend();
+    renderEmployeeTable();
+    renderScheduleGrid();
+    renderSummary();
+  }
+
+  // ---------- Export to Excel ----------
+  async function exportToExcel() {
+    if (!dates.length || !employees.length) { showToast(t("toastNeedExport")); return; }
+    const btn = document.getElementById("btnExport");
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = t("building");
+
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const ws = workbook.addWorksheet("Schedule");
+      const dayShort = t("dayShort");
+
+      const fixedCols = [t("thName"), t("thUsername"), t("thGender"), t("thLob"), t("thHrId")];
+      const headerRow1 = [...fixedCols];
+      weekDates(0).forEach(d => headerRow1.push(`${dayShort[d.getDay()]} ${fmtShort(d)}`));
+      headerRow1.push(t("thDaysOff"));
+      weekDates(1).forEach(d => headerRow1.push(`${dayShort[d.getDay()]} ${fmtShort(d)}`));
+      headerRow1.push(t("thDaysOff"));
+
+      const hRow = ws.addRow(headerRow1);
+      hRow.eachCell(cell => {
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1C2230" } };
+        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      });
+
+      function argb(hex) { return "FF" + hex.replace("#", "").toUpperCase(); }
+
+      employees.forEach(emp => {
+        const genderLabel = emp.gender === "F" ? t("genderF") : t("genderM");
+        const rowVals = [emp.name, emp.username, genderLabel, emp.lob, emp.hrId];
+        weekDates(0).forEach(d => rowVals.push(emp.shifts[toISO(d)] || ""));
+        rowVals.push(daysOffCount(emp, 0));
+        weekDates(1).forEach(d => rowVals.push(emp.shifts[toISO(d)] || ""));
+        rowVals.push(daysOffCount(emp, 1));
+
+        const row = ws.addRow(rowVals);
+        const dayCols = [];
+        weekDates(0).forEach((d, i) => dayCols.push(6 + i));
+        weekDates(1).forEach((d, i) => dayCols.push(6 + 7 + 1 + i));
+
+        dayCols.forEach(col => {
+          const cell = row.getCell(col);
+          const val = cell.value;
+          const style = styleFor(val || "");
+          if (val) {
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: argb(style.bg) } };
+            cell.font = { color: { argb: argb(style.fg === "inherit" ? "#1a1a1a" : style.fg) }, bold: true };
+          }
+          cell.alignment = { horizontal: "center", vertical: "middle" };
+        });
+      });
+
+      ws.getColumn(1).width = 22;
+      ws.getColumn(2).width = 14;
+      ws.getColumn(3).width = 8;
+      ws.getColumn(4).width = 10;
+      ws.getColumn(5).width = 10;
+      for (let c = 6; c <= fixedCols.length + 16; c++) ws.getColumn(c).width = 9;
+      ws.views = [{ state: "frozen", xSplit: 5, ySplit: 1 }];
+
+      ws.addRow([]);
+      ws.addRow([]);
+
+      [0, 1].forEach(weekIdx => {
+        const label = ws.addRow([`${weekIdx === 0 ? t("week1") : t("week2")}`]);
+        label.getCell(1).font = { bold: true };
+
+        const { counts, totalLogin, wDates, times } = computeCounts(weekIdx);
+        const sumHeader = ws.addRow([t("thShift"), ...wDates.map(d => dayShort[d.getDay()])]);
+        sumHeader.eachCell(cell => {
+          cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1C2230" } };
+          cell.alignment = { horizontal: "center" };
+        });
+
+        times.forEach(tm => {
+          const r = ws.addRow([tm, ...counts[tm]]);
+          r.getCell(1).font = { bold: true };
+          r.eachCell(cell => { cell.alignment = { horizontal: "center" }; });
+        });
+
+        const vRow = ws.addRow([t("rowV"), ...counts["V"]]);
+        const offRow = ws.addRow([t("rowOff"), ...counts["OFF"]]);
+        const compRow = ws.addRow([t("rowComp"), ...counts["Comp"]]);
+        const totalRow = ws.addRow([t("rowTotal"), ...totalLogin]);
+
+        [[vRow, "FFC00000"], [offRow, "FF2B2B2B"], [compRow, "FFED7D31"], [totalRow, "FF2F5FB3"]]
+          .forEach(([r, color]) => {
+            r.eachCell(cell => {
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: color } };
+              cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
+              cell.alignment = { horizontal: "center" };
+            });
+          });
+
+        ws.addRow([]);
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const filename = `Shift_Schedule_${toISO(dates[0])}_to_${toISO(dates[13])}.xlsx`;
+
+      // Standard browser download — works on GitHub Pages / Netlify / any static host.
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      showToast(t("toastSaved"));
+    } catch (err) {
+      console.error(err);
+      showToast(t("toastBuildError"));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  }
+
+  // ---------- Wire up ----------
+  document.getElementById("btnGenerate").addEventListener("click", () => {
+    const val = document.getElementById("startDate").value;
+    const d = val ? fromISO(val) : new Date();
+    generatePeriod(d);
+  });
+  document.getElementById("btnAddEmployee").addEventListener("click", addOrUpdateEmployee);
+  document.getElementById("btnCancelEdit").addEventListener("click", cancelEdit);
+  document.getElementById("btnAutoFill").addEventListener("click", autoFillShifts);
+  document.getElementById("btnExport").addEventListener("click", exportToExcel);
+  document.getElementById("btnLang").addEventListener("click", () => switchLang(lang === "ar" ? "en" : "ar"));
+  document.getElementById("btnAddTime").addEventListener("click", addCustomTime);
+  document.getElementById("customTimeInput").addEventListener("keydown", (e) => { if (e.key === "Enter") addCustomTime(); });
+
+  // ---------- Init ----------
+  (function init() {
+    const hadState = loadState();
+    applyStaticTranslations();
+    renderTimePicker();
+    renderPreferredOptions();
+    renderEmpOffDaysPicker();
+
+    if (!hadState || !periodStart) {
+      generatePeriod(new Date());
+    } else {
+      dates = [];
+      for (let i = 0; i < 14; i++) {
+        const d = new Date(periodStart);
+        d.setDate(d.getDate() + i);
+        dates.push(d);
+      }
+      document.getElementById("startDate").value = toISO(periodStart);
+      updatePeriodLabel();
+      renderAll();
+    }
+  })();
+})();
+</script>
+</body>
+</html>
