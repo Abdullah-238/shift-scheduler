@@ -139,6 +139,44 @@
   .edit-banner.show { display: flex; }
   .subpanel { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 14px; background: var(--bg); }
   .subpanel .label { font-size: 11px; color: var(--muted); font-weight: 700; margin-bottom: 4px; display: block; }
+
+  table.summary td.zero-shift { background: #c00000 !important; color: #fff; font-weight: 700; }
+
+  .date-popup {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 30;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+    padding: 12px;
+    width: 260px;
+    direction: ltr;
+  }
+  .date-popup.show { display: block; }
+  .date-popup .cal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px; font-weight: 700; font-size: 13px;
+  }
+  .date-popup .cal-nav {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    width: 26px; height: 26px; cursor: pointer; font-size: 13px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .date-popup table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .date-popup th { color: var(--muted); font-weight: 600; padding: 4px 0; }
+  .date-popup td { text-align: center; padding: 2px; }
+  .date-popup td button {
+    width: 30px; height: 28px; border-radius: 6px; border: none; background: transparent;
+    color: var(--text); cursor: pointer; font-size: 12px; padding: 0;
+  }
+  .date-popup td button:hover { background: var(--border); }
+  .date-popup td button.is-today { border: 1px solid var(--accent); }
+  .date-popup td button.is-selected { background: var(--accent); color: #fff; font-weight: 700; }
+  .date-popup td button:disabled { visibility: hidden; cursor: default; }
 </style>
 </head>
 <body>
@@ -159,9 +197,10 @@
   <section class="panel">
     <h2 data-i18n="sec1Title">1. Pick the period</h2>
     <div class="row">
-      <div class="field">
+      <div class="field" style="position:relative;">
         <label data-i18n="startDateLabel" for="startDate">Start date (any day)</label>
-        <input type="date" id="startDate" class="force-ltr">
+        <input type="text" id="startDate" class="force-ltr" readonly style="cursor:pointer;" placeholder="dd-mmm-yyyy">
+        <div id="datePopup" class="date-popup"></div>
       </div>
       <button class="primary" id="btnGenerate" data-i18n="btnGenerate">Generate 2-week period</button>
       <div class="field">
@@ -396,6 +435,8 @@
   let periodStart = null;
   let dates = [];
   let editingId = null;
+  let pickedDate = null;   // Date chosen in the custom calendar (any day, not necessarily Sunday)
+  let calViewDate = null;  // which month the open calendar popup is showing
   let allTimes = [...DEFAULT_TIMES];       // master catalog, in display order
   let enabledTimes = new Set(DEFAULT_TIMES); // which of allTimes are currently active
 
@@ -406,6 +447,8 @@
   function toISO(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
   function fromISO(s) { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); }
   function fmtShort(d) { return `${pad(d.getDate())}-${d.toLocaleString("en-US",{month:"short"})}`; }
+  function fmtDisplay(d) { return `${pad(d.getDate())}-${d.toLocaleString("en-US",{month:"short"})}-${d.getFullYear()}`; }
+  function sameDay(a, b) { return a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
   function nextSundayOnOrBefore(d) {
     const copy = new Date(d);
     copy.setDate(copy.getDate() - copy.getDay());
@@ -481,6 +524,8 @@
   // ---------- Period ----------
   function generatePeriod(fromDate) {
     periodStart = nextSundayOnOrBefore(fromDate);
+    pickedDate = fromDate;
+    document.getElementById("startDate").value = fmtDisplay(fromDate);
     dates = [];
     for (let i = 0; i < 14; i++) {
       const d = new Date(periodStart);
@@ -561,6 +606,77 @@
         const day = Number(cb.getAttribute("data-offday-checkbox"));
         if (cb.checked) formOffDays.add(day); else formOffDays.delete(day);
         renderEmpOffDaysPicker();
+      });
+    });
+  }
+
+  // ---------- Custom calendar date picker ----------
+  function openCalendar() {
+    calViewDate = new Date((pickedDate || new Date()).getFullYear(), (pickedDate || new Date()).getMonth(), 1);
+    renderCalendar();
+    document.getElementById("datePopup").classList.add("show");
+  }
+  function closeCalendar() {
+    document.getElementById("datePopup").classList.remove("show");
+  }
+  function renderCalendar() {
+    const popup = document.getElementById("datePopup");
+    const dayShort = t("dayShort");
+    const year = calViewDate.getFullYear();
+    const month = calViewDate.getMonth();
+    const monthLabel = calViewDate.toLocaleString(lang === "ar" ? "ar" : "en-US", { month: "long", year: "numeric" });
+
+    const firstOfMonth = new Date(year, month, 1);
+    const startOffset = firstOfMonth.getDay(); // 0=Sun
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = new Date();
+
+    let cells = [];
+    for (let i = 0; i < startOffset; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+    while (cells.length % 7 !== 0) cells.push(null);
+
+    let rows = "";
+    for (let r = 0; r < cells.length / 7; r++) {
+      rows += "<tr>";
+      for (let c = 0; c < 7; c++) {
+        const dayNum = cells[r * 7 + c];
+        if (!dayNum) { rows += "<td><button disabled></button></td>"; continue; }
+        const cellDate = new Date(year, month, dayNum);
+        const isToday = sameDay(cellDate, today);
+        const isSelected = sameDay(cellDate, pickedDate);
+        rows += `<td><button type="button" data-day="${dayNum}" class="${isToday ? "is-today" : ""} ${isSelected ? "is-selected" : ""}">${dayNum}</button></td>`;
+      }
+      rows += "</tr>";
+    }
+
+    popup.innerHTML = `
+      <div class="cal-head">
+        <button type="button" class="cal-nav" id="calPrev">‹</button>
+        <span>${monthLabel}</span>
+        <button type="button" class="cal-nav" id="calNext">›</button>
+      </div>
+      <table>
+        <thead><tr>${dayShort.map(d => `<th>${d.slice(0,2)}</th>`).join("")}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+
+    popup.querySelector("#calPrev").addEventListener("click", (e) => {
+      e.stopPropagation();
+      calViewDate = new Date(year, month - 1, 1);
+      renderCalendar();
+    });
+    popup.querySelector("#calNext").addEventListener("click", (e) => {
+      e.stopPropagation();
+      calViewDate = new Date(year, month + 1, 1);
+      renderCalendar();
+    });
+    popup.querySelectorAll("button[data-day]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        pickedDate = new Date(year, month, Number(btn.getAttribute("data-day")));
+        document.getElementById("startDate").value = fmtDisplay(pickedDate);
+        closeCalendar();
       });
     });
   }
@@ -818,7 +934,7 @@
 
     times.forEach(tm => {
       html += `<tr><td class="label-col force-ltr" style="text-align:center;">${tm}</td>`;
-      counts[tm].forEach(v => { html += `<td>${v}</td>`; });
+      counts[tm].forEach(v => { html += `<td class="${v === 0 ? "zero-shift" : ""}">${v}</td>`; });
       html += `</tr>`;
     });
 
@@ -926,7 +1042,13 @@
         times.forEach(tm => {
           const r = ws.addRow([tm, ...counts[tm]]);
           r.getCell(1).font = { bold: true };
-          r.eachCell(cell => { cell.alignment = { horizontal: "center" }; });
+          r.eachCell((cell, colNum) => {
+            cell.alignment = { horizontal: "center" };
+            if (colNum > 1 && cell.value === 0) {
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC00000" } };
+              cell.font = { color: { argb: "FFFFFFFF" }, bold: true };
+            }
+          });
         });
 
         const vRow = ws.addRow([t("rowV"), ...counts["V"]]);
@@ -970,10 +1092,16 @@
   }
 
   // ---------- Wire up ----------
+  document.getElementById("startDate").addEventListener("click", (e) => {
+    e.stopPropagation();
+    openCalendar();
+  });
+  document.addEventListener("click", (e) => {
+    const popup = document.getElementById("datePopup");
+    if (!popup.contains(e.target) && e.target.id !== "startDate") closeCalendar();
+  });
   document.getElementById("btnGenerate").addEventListener("click", () => {
-    const val = document.getElementById("startDate").value;
-    const d = val ? fromISO(val) : new Date();
-    generatePeriod(d);
+    generatePeriod(pickedDate || new Date());
   });
   document.getElementById("btnAddEmployee").addEventListener("click", addOrUpdateEmployee);
   document.getElementById("btnCancelEdit").addEventListener("click", cancelEdit);
@@ -1000,7 +1128,8 @@
         d.setDate(d.getDate() + i);
         dates.push(d);
       }
-      document.getElementById("startDate").value = toISO(periodStart);
+      pickedDate = periodStart;
+      document.getElementById("startDate").value = fmtDisplay(periodStart);
       updatePeriodLabel();
       renderAll();
     }
